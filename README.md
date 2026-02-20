@@ -36,7 +36,10 @@ Important:
 	inputs = {
 		# Or change to your preferred NixOS channel
 		nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-		smallstep.url = "github:smallstep/nur";
+		smallstep = {
+			url = "github:smallstep/nur";
+			inputs.nixpkgs.follows = "nixpkgs";
+		};
 	};
 
 	outputs = { self, nixpkgs, smallstep, ... }: 
