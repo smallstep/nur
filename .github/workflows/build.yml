@@ -18,7 +18,7 @@ jobs:
         with:
           # matches: package_name: vX.Y.Z -> vX.Y.Z where XYZ are digits (including release candidates: vX.Y.Z-rcN)
           # it detects a commit from goreleaser with a new nix package version.
-          regex: '\s*[a-zA-Z][\w]+:\s*v\d+\.\d+\.\d+(-rc\d+)?\s*->\s*v\d+\.\d+\.\d+(-rc\d+)?'
+          regex: '\s*[a-zA-Z][\w]+:\s*v\d+\.\d+\.\d+(-rc\d+|-dev\d+)?\s*->\s*v\d+\.\d+\.\d+(-rc\d+)?'
           text: ${{ github.event.head_commit.message }}
 
   tests:
