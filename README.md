@@ -1,37 +1,70 @@
-# nur-packages-template
+# Smallstep Nix User Repositories
 
-**A template for [NUR](https://github.com/nix-community/NUR) repositories**
+**A collection of Smallstep software packaged for NixOS/nixpkgs**
 
-## Setup
+## Setup for NixOS
 
-1. Click on [Use this template](https://github.com/nix-community/nur-packages-template/generate) to start a repo based on this template. (Do _not_ fork it.)
-2. Add your packages to the [pkgs](./pkgs) directory and to
-   [default.nix](./default.nix)
-   * Remember to mark the broken packages as `broken = true;` in the `meta`
-     attribute, or travis (and consequently caching) will fail!
-   * Library functions, modules and overlays go in the respective directories
-3. Choose your CI: Depending on your preference you can use github actions (recommended) or [Travis ci](https://travis-ci.com).
-   - Github actions: Change your NUR repo name and optionally add a cachix name in [.github/workflows/build.yml](./.github/workflows/build.yml) and change the cron timer
-     to a random value as described in the file
-   - Travis ci: Change your NUR repo name and optionally your cachix repo name in 
-   [.travis.yml](./.travis.yml). Than enable travis in your repo. You can add a cron job in the repository settings on travis to keep your cachix cache fresh
-5. Change your travis and cachix names on the README template section and delete
-   the rest
-6. [Add yourself to NUR](https://github.com/nix-community/NUR#how-to-add-your-own-repository)
+Flakes is the suggested way to install the packages available on this repository, following are quick instructions to get it working.
 
-## README template
+1. Ensure flakes and experimental features are enabled in `/etc/nixos/configuration.nix`:
+```
+nix.settings.experimental-features = [ "nix-command" "flakes" ];
+```
+2. Ensure Git is installed: Flakes require git to clone dependencies:
+```
+environment.systemPackages = with pkgs; [
+  git
+];
+```
+3. Rebuild: Run the following command to apply the changes:
+```
+sudo nixos-rebuild switch
+```
+4. Initialize flakes:
+```
+cd /etc/nixos
+sudo nix flake init
+```
+5. Add smallstep repository to flake.nix, this example also installs the latest step-agent-plugin.
 
-# nur-packages
+Important:
+- Update `<host>` to match your NixOS configured host name, as listed in `networking.hostName` in configuration.nix.
+- Update `"x86_64-linux"` to your CPU architecture, e.g. `"aarch64-linux"`. It will autodetect by default if builtins are available.
 
-**My personal [NUR](https://github.com/nix-community/NUR) repository**
+```
+{
+	inputs = {
+		# Or change to your preferred NixOS channel
+		nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+		smallstep.url = "github:smallstep/nur";
+	};
+
+	outputs = { self, nixpkgs, smallstep, ... }: 
+		let
+		system = if builtins ? currentSystem
+			then builtins.currentSystem
+			else "x86_64-linux";
+		in
+		{
+		    nixosConfigurations.<host> = nixpkgs.lib.nixosSystem {
+			inherit system;
+			modules = [ ./configuration.nix 
+				({ pkgs, ... }: {
+					programs.nix-ld.enable = true;
+					environment.systemPackages = with pkgs; [
+						smallstep.packages.${pkgs.system}.step-agent-plugin
+					];
+				})
+			];
+		    };
+		};
+}
+```
+6. Update flakes and install packages:
+```
+sudo nix flake update
+sudo nixos-rebuild switch
+```
 
 <!-- Remove this if you don't use github actions -->
-![Build and populate cache](https://github.com/<YOUR-GITHUB-USER>/nur-packages/workflows/Build%20and%20populate%20cache/badge.svg)
-
-<!--
-Uncomment this if you use travis:
-
-[![Build Status](https://travis-ci.com/<YOUR_TRAVIS_USERNAME>/nur-packages.svg?branch=master)](https://travis-ci.com/<YOUR_TRAVIS_USERNAME>/nur-packages)
--->
-[![Cachix Cache](https://img.shields.io/badge/cachix-<YOUR_CACHIX_CACHE_NAME>-blue.svg)](https://<YOUR_CACHIX_CACHE_NAME>.cachix.org)
-
+![Build and populate cache](https://github.com/smallstep/nur/workflows/Build%20and%20populate%20cache/badge.svg)
