@@ -14,7 +14,7 @@
   modules = import ./modules; # NixOS modules
   overlays = import ./overlays; # nixpkgs overlays
 
-  example-package = pkgs.callPackage ./pkgs/example-package { };
-  # some-qt5-package = pkgs.libsForQt5.callPackage ./pkgs/some-qt5-package { };
-  # ...
+  # <package-list>: DO NOT REMOVE THIS LINE
+  step-agent-plugin = pkgs.callPackage ./pkgs/step-agent-plugin/step-agent-plugin_0.64.0-rc1.nix { };
+  step-agent-plugin_0_64_0-rc1 = pkgs.callPackage ./pkgs/step-agent-plugin/step-agent-plugin_0.64.0-rc1.nix { };
 }
