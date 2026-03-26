@@ -25,7 +25,7 @@ sudo nixos-rebuild switch
 cd /etc/nixos
 sudo nix flake init
 ```
-5. Add smallstep repository to flake.nix, this example also installs the latest step-agent-plugin.
+5. Add smallstep repository to `flake.nix`, this example also installs the latest `step-agent` package available.
 
 Important:
 - Update `<host>` to match your NixOS configured host name, as listed in `networking.hostName` in configuration.nix.
@@ -55,7 +55,7 @@ Important:
 				({ pkgs, ... }: {
 					programs.nix-ld.enable = true;
 					environment.systemPackages = with pkgs; [
-						smallstep.packages.${pkgs.system}.step-agent-plugin
+						smallstep.packages.${pkgs.system}.step-agent
 					];
 				})
 			];
@@ -69,5 +69,13 @@ sudo nix flake update
 sudo nixos-rebuild switch
 ```
 
+**Note**: The first time you execute the commands above it will take a bit longer to finish.
+
+7. Check that `step-agent` program was successfully installed by typing the following commmand on a terminal:
+```
+$ step-agent version
+```
+
+8. More information about `step-agent` can be found on the following page: [Step Agent docs](https://smallstep.com/docs/platform/smallstep-app/)
 <!-- Remove this if you don't use github actions -->
 ![Build and populate cache](https://github.com/smallstep/nur/workflows/Build%20and%20populate%20cache/badge.svg)
