@@ -69,7 +69,7 @@ jobs:
     - name: Make addpkg script executable
       run: chmod +x ./addpkg.sh
     - name: Execute addpkg.sh to update nix package's catalog
-      run: ./addpkg.sh step-agent-plugin
+      run: ./addpkg.sh step-agent
     - name: Add and Commit default.nix
       uses: EndBug/add-and-commit@v9 # Use the specific action
       with:
