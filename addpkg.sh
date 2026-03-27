@@ -17,6 +17,7 @@ case "${unameOut}" in
 Darwin*) OS=Mac ;;
 esac
 
+# Handle differences between MacOS and Linux sed implementation.
 if [ "$OS" = "Mac" ]; then
     xsed() {
         sed -i "" "$@"
@@ -27,11 +28,21 @@ else
     }
 fi
 
+# Add a new entry for the package version to default.nix, including rc and dev releases.
+# Example, for a ${pkg_with_version} = "step-agent_0_65_0-rc11", the entry below would be added:
+# step-agent_0_65_0-rc11 = pkgs.callPackage ./pkgs/step-agent/step-agent_0.65.0-rc11.nix { };
 if ! grep -Eqs "${pkg_with_version}[[:blank:]]*=" default.nix; then
     echo "Adding new package entry to default.nix: pkg=$pkg  version=$version"
 
     xsed "/<package-list>/a\\
   ${pkg_name} = ${nix_entry}" default.nix
+fi
+
+# Check if package is a stable release, if so we update the default step-agent package entry to point to it.
+# Otherwise quit.
+if [[ ! "$pkg_with_version" =~ _[0-9]+_[0-9]+_[0-9]+$ ]]; then
+    echo "Non stable release $pkg_with_version, skipping default package update."
+    exit 0
 fi
 
 # patch default package name to point to the latest version
