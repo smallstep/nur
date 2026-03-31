@@ -70,12 +70,27 @@ jobs:
       run: chmod +x ./addpkg.sh
     - name: Execute addpkg.sh to update nix package's catalog
       run: ./addpkg.sh step-agent
-    - name: Add and Commit default.nix
-      uses: EndBug/add-and-commit@v10 # Use the specific action
-      with:
-        add: 'default.nix' # Specifies the file(s) to add
-        message: 'Added new nix package version' # The commit message
-        author_name: 'github-actions[bot]'
-        author_email: 'github-actions[bot]@users.noreply.github.com'
+    - name: Setup bot SSH signing key
+      uses: webfactory/ssh-agent@e83874834305fe9a4a2997156cb26c5de65a8555 # v0.10.0
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        HAS_SSH_PRIVATE_KEY: ${{ secrets.STEP_TRAVIS_CI_GH_PRIVATE_SIGNING_KEY != '' }}
+      if: ${{ env.HAS_SSH_PRIVATE_KEY == 'true' }}
+      with:
+        ssh-private-key: |
+          ${{ secrets.STEP_TRAVIS_CI_GH_PRIVATE_SIGNING_KEY }}
+    - name: Add and Commit default.nix
+      run: |
+        git config user.email "eng+ci@smallstep.com"
+        git config user.name "step-ci"
+
+        # Configure GH commit signing key.
+        git config --global commit.gpgsign true
+        git config --global gpg.format ssh
+        git config --global user.signingkey "${{ secrets.STEP_TRAVIS_CI_GH_PUBLIC_SIGNING_KEY }}"
+
+        git add default.nix && git commit -m "Add new package to default.nix"
+    - name: Push changes
+      uses: ad-m/github-push-action@77c5b412c50b723d2a4fbc6d71fb5723bcd439aa # v1.0.0
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        branch: 'main'
