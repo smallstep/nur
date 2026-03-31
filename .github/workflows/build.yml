@@ -71,7 +71,7 @@ jobs:
     - name: Execute addpkg.sh to update nix package's catalog
       run: ./addpkg.sh step-agent
     - name: Add and Commit default.nix
-      uses: EndBug/add-and-commit@v9 # Use the specific action
+      uses: EndBug/add-and-commit@v10 # Use the specific action
       with:
         add: 'default.nix' # Specifies the file(s) to add
         message: 'Added new nix package version' # The commit message
