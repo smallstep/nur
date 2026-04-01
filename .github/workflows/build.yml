@@ -92,5 +92,5 @@ jobs:
     - name: Push changes
       uses: ad-m/github-push-action@77c5b412c50b723d2a4fbc6d71fb5723bcd439aa # v1.0.0
       with:
-        github_token: ${{ secrets.NUR_PAT }}
+        github_token: ${{ secrets.PAT }}
         branch: 'main'
