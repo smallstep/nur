@@ -1,0 +1,36 @@
+name: "Test PAT push"
+on:
+  workflow_dispatch:
+
+jobs:
+  test-pat-push:
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v6
+    - name: Setup bot SSH signing key
+      uses: webfactory/ssh-agent@e83874834305fe9a4a2997156cb26c5de65a8555 # v0.10.0
+      env:
+        HAS_SSH_PRIVATE_KEY: ${{ secrets.STEP_TRAVIS_CI_GH_PRIVATE_SIGNING_KEY != '' }}
+      if: ${{ env.HAS_SSH_PRIVATE_KEY == 'true' }}
+      with:
+        ssh-private-key: |
+          ${{ secrets.STEP_TRAVIS_CI_GH_PRIVATE_SIGNING_KEY }}
+    - name: Make empty commit
+      run: |
+        git config user.email "eng+ci@smallstep.com"
+        git config user.name "step-ci"
+
+        # Configure GH commit signing key.
+        git config --global commit.gpgsign true
+        git config --global gpg.format ssh
+        git config --global user.signingkey "${{ secrets.STEP_TRAVIS_CI_GH_PUBLIC_SIGNING_KEY }}"
+
+        git commit --allow-empty -m "test: verify NUR_PAT push permissions"
+    - name: Push changes
+      uses: ad-m/github-push-action@77c5b412c50b723d2a4fbc6d71fb5723bcd439aa # v1.0.0
+      with:
+        github_token: ${{ secrets.NUR_PAT }}
+        branch: 'main'
