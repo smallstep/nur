@@ -1,6 +1,13 @@
+# https://docs.github.com/github/administering-a-repository/configuration-options-for-dependency-updates
+
 version: 2
 updates:
-  - package-ecosystem: "github-actions"
-    directory: "/"
+  ## GitHub Actions
+  - package-ecosystem: github-actions
+    directory: /
     schedule:
-      interval: "weekly"
+      interval: weekly
+    groups:
+      # group patch updates
+      all:
+        update-types: [ patch, minor, major ]
