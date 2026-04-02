@@ -7,14 +7,17 @@ on:
       - master
   workflow_dispatch:
 
+permissions: read-all
+
 jobs:
   release-check:
+    permissions: {}
     runs-on: ubuntu-latest
     outputs:
       is-release: ${{ steps.condition-check.outputs.match }}
     steps:
       - id: condition-check
-        uses: actions-ecosystem/action-regex-match@v2
+        uses: actions-ecosystem/action-regex-match@9e6c4fb3d5e898f505be7a1fb6e7b0a278f6665b # v2.0.2
         with:
           # matches: package_name: vX.Y.Z -> vX.Y.Z where XYZ are digits (including rc, e.g: vX.Y.Z-rcN)
           # it detects a commit from goreleaser with a new nix package version.
@@ -22,6 +25,7 @@ jobs:
           text: ${{ github.event.head_commit.message }}
 
   tests:
+    permissions: {}
     needs: release-check
     strategy:
       matrix:
@@ -36,7 +40,7 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v6
     - name: Install nix
-      uses: cachix/install-nix-action@v31
+      uses: cachix/install-nix-action@96951a368ba55167b55f1c916f7d416bac6505fe # v31.10.3
       with:
         nix_path: "${{ matrix.nixPath }}"
         extra_nix_config: |
@@ -64,8 +68,15 @@ jobs:
 
     if: needs.release-check.outputs.is-release != ''
     steps:
+    - name: Configure PAT for git push
+      run: |
+        git config --global url.https://${{ secrets.NUR_PAT }}@github.com/.insteadOf https://github.com/
+
     - name: Checkout repository
       uses: actions/checkout@v6
+      with:
+        token: ${{ secrets.NUR_PAT }}
+
     - name: Make addpkg script executable
       run: chmod +x ./addpkg.sh
     - name: Execute addpkg.sh to update nix package's catalog
@@ -90,7 +101,4 @@ jobs:
 
         git add default.nix && git commit -m "Add new package to default.nix"
     - name: Push changes
-      uses: ad-m/github-push-action@77c5b412c50b723d2a4fbc6d71fb5723bcd439aa # v1.0.0
-      with:
-        github_token: ${{ secrets.PAT }}
-        branch: 'main'
+      run: git push

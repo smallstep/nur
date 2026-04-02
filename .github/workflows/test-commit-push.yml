@@ -1,21 +1,15 @@
-name: "Test PAT push"
+name: "Test commit push"
 on:
   workflow_dispatch:
 
 jobs:
-  test-pat-push:
+  test-commit-push:
     permissions:
       contents: write
     runs-on: ubuntu-latest
     steps:
-    - name: Configure PAT for git push
-      run: |
-        git config --global url.https://${{ secrets.NUR_PAT }}@github.com/.insteadOf https://github.com/
-
     - name: Checkout repository
-      uses: actions/checkout@v6
-      with:
-        token: ${{ secrets.NUR_PAT }}
+      uses: actions/checkout@v4
 
     - name: Setup bot SSH signing key
       uses: webfactory/ssh-agent@e83874834305fe9a4a2997156cb26c5de65a8555 # v0.10.0
@@ -25,16 +19,18 @@ jobs:
       with:
         ssh-private-key: |
           ${{ secrets.STEP_TRAVIS_CI_GH_PRIVATE_SIGNING_KEY }}
-    - name: Make empty commit
+
+    - name: Sign commit
       run: |
         git config user.email "eng+ci@smallstep.com"
         git config user.name "step-ci"
-
-        # Configure GH commit signing key.
         git config --global commit.gpgsign true
         git config --global gpg.format ssh
         git config --global user.signingkey "${{ secrets.STEP_TRAVIS_CI_GH_PUBLIC_SIGNING_KEY }}"
+        git commit --allow-empty -m "Test: empty commit from CI"
 
-        git commit --allow-empty -m "test: verify NUR_PAT push permissions"
     - name: Push changes
-      run: git push
+      uses: ad-m/github-push-action@77c5b412c50b723d2a4fbc6d71fb5723bcd439aa # v1.0.0
+      with:
+        github_token: ${{ secrets.PAT }}
+        branch: 'main'
