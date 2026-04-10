@@ -91,7 +91,7 @@ $ step-agent version
 ## Setup for NixOS with npins
 
 If you do not want to use flakes but still want to pin your dependencies you can use a tool like `npins`, `niv`, ...
-This guide assumes that you have advanced knowledge of nix and you know how to rebuild your host.
+This guide assumes that you have advanced knowledge of nix, you know how to rebuild your host and have npins already initialized.
 We will use `npins` in this example.
 
 1. Add this repository as an input
@@ -106,12 +106,12 @@ npins add github smallstep nur -b main --name smallstep
 
 ```nix
 {
-  sources, # or `sources ? (import ./npins)`
-  pkgs, # or pkgs ? sources.nixpkgs,
+  sources ? (import ./npins),
+  pkgs ? (import sources.nixpkgs {}),
   ...
 }:
 let
-  smallstep = import sources.nur { inherit pkgs; }; # if you pass pkgs, `step-agent` will use your nixpkgs instead of the locked one (advised)
+  smallstep = import sources.smallstep { inherit pkgs; }; # if you pass pkgs, `step-agent` will use your nixpkgs instead of the locked one (advised)
 in
 {
   environment.systemPackages = [
