@@ -14,8 +14,8 @@ in
     # TODO: make user / group configurable
     settings = {
       config = lib.mkOption {
-        type = lib.types.str;
-        default = "/etc/step-agent/agent.yaml";
+        type = lib.types.nullOr lib.types.str;
+        default = null;
         description = "The configuration file to use";
       };
 
@@ -122,14 +122,14 @@ in
       };
 
       apiUrl = lib.mkOption {
-        type = lib.types.str;
-        default = "https://gateway.smallstep.com";
+        type = lib.types.nullOr lib.types.str;
+        default = null;
         description = "The url where the Smallstep API can be found";
       };
 
       attestationCaUrl = lib.mkOption {
-        type = lib.types.str;
-        default = "https://att.smallstep.com/1.0";
+        type = lib.types.nullOr lib.types.str;
+        default = null;
         description = "The url for the Smallstep Attestation CA";
       };
 
@@ -176,8 +176,8 @@ in
       };
 
       agentPath = lib.mkOption {
-        type = lib.types.str;
-        default = "/run/step-agent";
+        type = lib.types.nullOr lib.types.str;
+        default = null;
         description = "The path to the directory to write the service certificates";
       };
 
@@ -188,8 +188,8 @@ in
       };
 
       ipc = lib.mkOption {
-        type = lib.types.str;
-        default = "@step-agent-ipc";
+        type = lib.types.nullOr lib.types.str;
+        default = null;
         description = "The path to the UNIX socket the IPC service binds on. May be prefixed with an '@' to denote an abstract socket";
       };
 
@@ -224,20 +224,20 @@ in
       };
 
       loginDomain = lib.mkOption {
-        type = lib.types.str;
-        default = "smallstep.com";
+        type = lib.types.nullOr lib.types.str;
+        default = null;
         description = "Specify the login domain";
       };
 
       pkcs11 = lib.mkOption {
-        type = lib.types.str;
-        default = "/run/step-agent/step-agent-pkcs11.sock";
+        type = lib.types.nullOr lib.types.str;
+        default = null;
         description = "The path to the UNIX socket the PKCS11 server binds on";
       };
 
       sshAgent = lib.mkOption {
-        type = lib.types.str;
-        default = "/run/step-agent/step-agent-ssh.sock";
+        type = lib.types.nullOr lib.types.str;
+        default = null;
         description = "The path to the UNIX socket the ssh-agent service binds on";
       };
 
@@ -248,19 +248,21 @@ in
       };
 
       logDir = lib.mkOption {
-        type = lib.types.str;
-        default = "/var/log/step-agent";
+        type = lib.types.nullOr lib.types.str;
+        default = null;
         description = "Directory path for storing agent logs";
       };
 
       logLevel = lib.mkOption {
-        type = lib.types.enum [
-          "debug"
-          "info"
-          "warn"
-          "error"
-        ];
-        default = "info";
+        type = lib.types.nullOr (
+          lib.types.enum [
+            "debug"
+            "info"
+            "warn"
+            "error"
+          ]
+        );
+        default = null;
         description = "Log level: debug, info, warn or error";
       };
 
@@ -317,7 +319,7 @@ in
         StateDirectory = "step-agent";
         Type = "notify";
         WatchdogSec = "60s";
-        ProtectSystem = "strict";
+        ProtectSystem = "yes"; # what stops us from using strict
         ProtectHome = "read-only";
         PrivateTmp = true;
         SecureBits = "keep-caps";
