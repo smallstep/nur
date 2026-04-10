@@ -25,8 +25,10 @@ in
     };
 
     systemd.services.step-agent = {
+
       after = [
         "network-online.target"
+        "step-agent-swtpm.service"
       ];
       description = "Smallstep Agent";
       documentation = [
@@ -38,8 +40,12 @@ in
       wantedBy = [
         "multi-user.target"
       ];
+      wants = [
+        "step-agent-swtpm.service"
+      ];
       environment = {
         HOME = "/var/lib/step-agent";
+        RUNTIME_DIRECTORY = "/run/step-agent";
       };
       unitConfig = {
         conditionPathIsReadWrite = "/etc/step-agent/agent.yaml";
@@ -48,7 +54,6 @@ in
         User = "step-agent";
         Group = "step-agent";
         ConfigurationDirectory = "step-agent";
-        RuntimeDirectory = "step-agent";
         StateDirectory = "step-agent";
         Type = "notify";
         WatchdogSec = "60s";
@@ -61,12 +66,13 @@ in
         ExecStart = "${lib.getExe cfg.package} start";
         ExecReload = "/bin/kill -HUP $MAINPID";
         DeviceAllow = "/dev/tpmrm0 rw";
-        ReadWritePaths = "-/dev/tpmrm0";
+        ReadWritePaths = "-/dev/tpmrm0 -/run/step-agent/swtpm.sock";
         LimitNOFILE = "65536";
         LimitMEMLOCK = "infinity";
         Restart = "always";
         RestartSec = "10";
       };
+
     };
   };
 }
