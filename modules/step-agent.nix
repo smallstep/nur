@@ -282,7 +282,7 @@ in
         isSystemUser = true;
         group = "step-agent";
         home = "/var/lib/step-agent";
-        createHome = true;
+        createHome = false;
       };
       groups.step-agent = { };
     };
@@ -319,12 +319,12 @@ in
         StateDirectory = "step-agent";
         Type = "notify";
         WatchdogSec = "60s";
-        ProtectSystem = "yes"; # what stops us from using strict
-        ProtectHome = "read-only";
-        PrivateTmp = true;
-        SecureBits = "keep-caps";
-        AmbientCapabilities = "CAP_IPC_LOCK CAP_CHOWN CAP_DAC_OVERRIDE CAP_FOWNER";
-        CapabilityBoundingSet = "CAP_SYSLOG CAP_IPC_LOCK CAP_CHOWN CAP_DAC_OVERRIDE CAP_FOWNER";
+        # ProtectSystem = "yes"; # what stops us from using strict
+        # ProtectHome = "read-only";
+        # PrivateTmp = true;
+        # SecureBits = "keep-caps";
+        # AmbientCapabilities = "CAP_IPC_LOCK CAP_CHOWN CAP_DAC_OVERRIDE CAP_FOWNER";
+        # CapabilityBoundingSet = "CAP_SYSLOG CAP_IPC_LOCK CAP_CHOWN CAP_DAC_OVERRIDE CAP_FOWNER";
         ExecStart =
           let
             flags = lib.cli.toGNUCommandLine { } {
@@ -375,11 +375,11 @@ in
 
         ExecReload = "/bin/kill -HUP $MAINPID";
         DeviceAllow = "/dev/tpmrm0 rw";
-        ReadWritePaths = [
-          "-/dev/tpmrm0"
-          "-/run/step-agent/swtpm.sock"
-          cfg.settings.agentPath
-        ];
+        # ReadWritePaths = [
+        #   "-/dev/tpmrm0"
+        #   "-/run/step-agent/swtpm.sock"
+        #   cfg.settings.agentPath
+        # ];
         LimitNOFILE = 65536;
         LimitMEMLOCK = "infinity";
         Restart = "always";
