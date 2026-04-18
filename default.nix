@@ -6,7 +6,13 @@
 # commands such as:
 #     nix-build -A mypackage
 
-{ pkgs ? import <nixpkgs> { } }:
+{
+  system ? builtins.currentSystem,
+  sources ? import ./sources.nix,
+  pkgs ? import sources.nixpkgs {
+    inherit system;
+  },
+}:
 
 {
   # The `lib`, `modules`, and `overlays` names are special
