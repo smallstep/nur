@@ -36,7 +36,11 @@ stdenvNoCC.mkDerivation {
 
   sourceRoot = ".";
 
-  nativeBuildInputs = [ installShellFiles makeWrapper ] ++ lib.optionals stdenvNoCC.isLinux [ autoPatchelfHook ];
+  nativeBuildInputs = [
+    installShellFiles
+    makeWrapper
+  ]
+  ++ lib.optionals stdenvNoCC.isLinux [ autoPatchelfHook ];
 
   buildInputs = lib.optionals stdenvNoCC.isLinux [
     stdenv.cc.cc.lib
@@ -45,7 +49,17 @@ stdenvNoCC.mkDerivation {
   installPhase = ''
     mkdir -p $out/bin
     cp -vr ./step-agent $out/bin/step-agent
-    wrapProgram $out/bin/step-agent --prefix PATH : ${lib.makeBinPath (lib.optionals stdenvNoCC.isLinux [ tpm2-tss tpm2-openssl desktop-file-utils polkit p11-kit ])}
+    wrapProgram $out/bin/step-agent --prefix PATH : ${
+      lib.makeBinPath (
+        lib.optionals stdenvNoCC.isLinux [
+          tpm2-tss
+          tpm2-openssl
+          desktop-file-utils
+          polkit
+          p11-kit
+        ]
+      )
+    }
   '';
 
   meta = {
