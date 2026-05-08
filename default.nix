@@ -15,6 +15,7 @@
   overlays = import ./overlays; # nixpkgs overlays
 
   # <package-list>: DO NOT REMOVE THIS LINE
+  step-agent_0_66_0 = pkgs.callPackage ./pkgs/step-agent/step-agent_0.66.0.nix { };
   step-agent_0_65_6 = pkgs.callPackage ./pkgs/step-agent/step-agent_0.65.6.nix { };
   step-agent_0_65_5-rc2 = pkgs.callPackage ./pkgs/step-agent/step-agent_0.65.5-rc2.nix { };
   step-agent_0_65_5-rc1 = pkgs.callPackage ./pkgs/step-agent/step-agent_0.65.5-rc1.nix { };
