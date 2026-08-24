@@ -78,6 +78,47 @@ $ step-agent version
 
 8. More information about `step-agent` can be found on the following page: [Step Agent docs](https://smallstep.com/docs/platform/smallstep-app/)
 
+## NixOS module
+
+The steps above install the `step-agent` binary. They do not set up the service
+that runs it. `nixosModules.step-agent` does that: it declares the `step-agent`
+system user, the systemd service and its restart path unit, the PKCS#11 socket
+that publishes the agent's token to `p11-kit` clients (NetworkManager,
+`wpa_supplicant`, browsers), and the polkit rules the agent needs to manage
+network connections.
+
+Add it to the same `modules` list as your `configuration.nix`:
+
+```
+nixosConfigurations.<host> = nixpkgs.lib.nixosSystem {
+    inherit system;
+    modules = [
+        ./configuration.nix
+        smallstep.nixosModules.step-agent
+    ];
+};
+```
+
+Then register the device with your team:
+
+```
+$ sudo step-agent register [team name]
+```
+
+Registration writes `agent.yaml` into `/etc/step-agent`, which systemd creates
+and keeps writable through `ConfigurationDirectory=`. Do not manage
+`agent.yaml` with `environment.etc`: that produces a read-only symlink into the
+Nix store, and the service refuses to start.
+
+**A hardware TPM 2.0 is required.** The Debian and RPM packages fall back to a
+software TPM on hosts without one, but the helper scripts that set that up are
+FHS-specific and are not part of the nixpkgs package.
+
+The module is maintained in
+[smallstep/agent](https://github.com/smallstep/agent) as `extra/step-agent.nix`,
+beside the systemd units it translates, and mirrored here on merge. Send changes
+there, not to this repository.
+
 ## Packaging
 
 Attributes are generated from the contents of `pkgs/`. Every
@@ -94,6 +135,5 @@ The unsuffixed `step-agent` attribute is the highest **stable** version present
 
 Releasing is therefore just committing the derivation: goreleaser writes the
 file from `smallstep/agent` and there is no package list to keep in sync.
-
 <!-- Remove this if you don't use github actions -->
 ![Build and populate cache](https://github.com/smallstep/nur/workflows/Build%20and%20populate%20cache/badge.svg)
