@@ -87,7 +87,8 @@ that publishes the agent's token to `p11-kit` clients (NetworkManager,
 `wpa_supplicant`, browsers), and the polkit rules the agent needs to manage
 network connections.
 
-Add it to the same `modules` list as your `configuration.nix`:
+Add it to the same `modules` list as your `configuration.nix`, and point
+`services.step-agent.package` at this repository's package:
 
 ```
 nixosConfigurations.<host> = nixpkgs.lib.nixosSystem {
@@ -95,9 +96,19 @@ nixosConfigurations.<host> = nixpkgs.lib.nixosSystem {
     modules = [
         ./configuration.nix
         smallstep.nixosModules.step-agent
+        {
+            services.step-agent.package =
+                smallstep.packages.${system}.step-agent;
+        }
     ];
 };
 ```
+
+Without `services.step-agent.package`, the service falls back to
+`pkgs.step-agent` from nixpkgs, which exists only on nixpkgs-unstable and lags
+behind the releases here — the daemon would run an older version than the
+`step-agent` CLI installed above. Setting the option makes them the same
+package.
 
 Then register the device with your team:
 

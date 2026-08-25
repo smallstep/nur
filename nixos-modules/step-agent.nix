@@ -22,146 +22,181 @@
 # /usr/libexec/step-agent; that path is FHS-specific and the nixpkgs package
 # does not ship it. NixOS therefore requires a hardware TPM 2.0, which is what
 # the agent documentation states.
-{ config, lib, pkgs, ... }:
+{ config, lib, options, pkgs, ... }:
 
+let
+  cfg = config.services.step-agent;
+in
 {
-  # The step-agent package is unfree.
-  nixpkgs.config.allowUnfreePredicate = pkg: lib.getName pkg == "step-agent";
-
-  environment.systemPackages = [ pkgs.step-agent ];
-
-  # The agent talks to the TPM from user space, so it needs read/write access
-  # to the TPM resource manager. This creates the tss group and the udev rules
-  # that grant that group /dev/tpmrm0.
-  security.tpm2.enable = true;
-
-  users.groups.step-agent = { };
-  users.users.step-agent = {
-    isSystemUser = true;
-    group = "step-agent";
-    home = "/var/lib/step-agent";
-    extraGroups = [ "tss" ];
-  };
-
-  # /run/step-agent holds the PKCS#11 and SSH sockets that other users connect
-  # to. Create it with tmpfiles rather than systemd's RuntimeDirectory=, which
-  # deletes the directory every time the service stops.
-  systemd.tmpfiles.rules = [
-    "d /run/step-agent 0755 step-agent step-agent - -"
-  ];
-
-  # Binding the PKCS#11 socket here rather than in the agent is what lets a
-  # device whose only network path is EAP-TLS boot at all. NetworkManager needs
-  # the endpoint's private key from this socket to authenticate, and the agent
-  # needs the network to reach mission-control -- so whichever waits for the
-  # other loses. systemd binds this socket before any service runs, so the
-  # supplicant's first request waits in the accept queue until the agent is up
-  # rather than finding nothing at the path.
-  #
-  # Waiting is the important part: p11-kit connects here exactly once per
-  # process and never reconnects. A client that finds no socket does not retry
-  # later, it stays broken until whatever process holds it is restarted.
-  systemd.sockets.step-agent-pkcs11 = {
-    description = "Smallstep Agent PKCS#11 socket";
-    documentation = [ "https://u.step.sm/docs/agent" ];
-    wantedBy = [ "sockets.target" ];
-
-    socketConfig = {
-      ListenStream = "/run/step-agent/step-agent-pkcs11.sock";
-      # Must match pkcs11server.FileDescriptorName; it is how the agent
-      # identifies this socket among the descriptors systemd passes it.
-      FileDescriptorName = "pkcs11";
-      SocketUser = "step-agent";
-      SocketGroup = "step-agent";
-      # Every local user's TLS client needs to reach the token, the same
-      # permissions the agent applies when it binds the socket itself.
-      SocketMode = "0666";
-      Service = "step-agent.service";
+  options.services.step-agent = {
+    # pkgs.step-agent only exists on nixpkgs-unstable, and nixpkgs lags our
+    # releases -- so the daemon nixpkgs runs can be versions behind the CLI a
+    # user installed from the smallstep NUR flake. This option is how the two
+    # are kept in lockstep: point it at the NUR package.
+    package = lib.mkPackageOption pkgs "step-agent" {
+      extraDescription = ''
+        The default, `pkgs.step-agent`, exists only on nixpkgs-unstable and
+        trails Smallstep's releases. Set this to the package from the
+        smallstep NUR flake (e.g. `smallstep.packages
+        ''${pkgs.system}.step-agent`) to run the current release.
+      '';
     };
   };
 
-  systemd.services.step-agent = {
-    description = "Smallstep Agent";
-    documentation = [ "https://u.step.sm/docs/agent" ];
-    wantedBy = [ "multi-user.target" ];
-
-    # Deliberately NOT ordered after network-online.target. The agent serves
-    # the PKCS#11 key NetworkManager needs to bring an EAP-TLS link up, so
-    # waiting for the network to be online would mean waiting for itself; it
-    # boots from its cached configuration instead and reaches mission-control
-    # once the link it unblocked exists.
-    after = [ "step-agent-pkcs11.socket" ];
-    # wants, not requires. The ordering above is what matters -- the socket
-    # must be bound before the agent starts, so the agent inherits it rather
-    # than binding its own -- and wants gives that without making the socket
-    # load-bearing: a socket unit that cannot bind would otherwise take the
-    # whole service down with it.
-    wants = [ "step-agent-pkcs11.socket" ];
-
-    # The agent starts once the device is registered and agent.yaml exists.
-    unitConfig.ConditionPathIsReadWrite = "/etc/step-agent/agent.yaml";
-
-    environment = {
-      HOME = "/var/lib/step-agent";
-      RUNTIME_DIRECTORY = "/run/step-agent";
+  config = {
+    # The nixpkgs step-agent package is unfree. allowUnfreePackages, unlike
+    # allowUnfreePredicate, is merged as list concatenation across modules, so
+    # this cannot clobber (or be clobbered by) the host's own unfree
+    # configuration. Both names are listed because nixpkgs builds the agent
+    # with pname "step-agent" while the NUR derivations use
+    # "step-agent-plugin".
+    #
+    # Skipped when the host passes an externally instantiated nixpkgs
+    # (nixpkgs.pkgs): any nixpkgs.config definition is an eval error there,
+    # and such hosts configure unfree on the instance they create.
+    nixpkgs.config = lib.mkIf (!options.nixpkgs.pkgs.isDefined) {
+      allowUnfreePackages = [ "step-agent" "step-agent-plugin" ];
     };
 
-    serviceConfig = {
-      Type = "notify";
-      WatchdogSec = "60s";
-      ExecStart = "${lib.getExe pkgs.step-agent} start";
-      ExecReload = "${pkgs.coreutils}/bin/kill -HUP $MAINPID";
-      User = "step-agent";
-      Group = "step-agent";
-      ConfigurationDirectory = "step-agent";
-      StateDirectory = "step-agent";
-      Restart = "always";
-      RestartSec = 10;
+    environment.systemPackages = [ cfg.package ];
 
-      ProtectSystem = true;
-      ProtectHome = "read-only";
-      PrivateTmp = true;
-      SecureBits = "keep-caps";
-      AmbientCapabilities = [ "CAP_IPC_LOCK" "CAP_CHOWN" "CAP_DAC_OVERRIDE" "CAP_FOWNER" ];
-      CapabilityBoundingSet = [ "CAP_SYSLOG" "CAP_IPC_LOCK" "CAP_CHOWN" "CAP_DAC_OVERRIDE" "CAP_FOWNER" ];
-      DeviceAllow = [ "/dev/tpmrm0 rw" ];
-      ReadWritePaths = [ "-/dev/tpmrm0" ];
+    # The agent talks to the TPM from user space, so it needs read/write access
+    # to the TPM resource manager. This creates the tss group and the udev rules
+    # that grant that group /dev/tpmrm0.
+    security.tpm2.enable = true;
 
-      LimitNOFILE = 65536;
-      LimitMEMLOCK = "infinity";
+    users.groups.step-agent = { };
+    users.users.step-agent = {
+      isSystemUser = true;
+      group = "step-agent";
+      home = "/var/lib/step-agent";
+      extraGroups = [ "tss" ];
     };
-  };
 
-  # Restart the agent when its configuration changes, such as after registering.
-  systemd.paths.step-agent-restart = {
-    wantedBy = [ "multi-user.target" ];
-    pathConfig.PathChanged = "/etc/step-agent/agent.yaml";
-  };
+    # /run/step-agent holds the PKCS#11 and SSH sockets that other users connect
+    # to. Create it with tmpfiles rather than systemd's RuntimeDirectory=, which
+    # deletes the directory every time the service stops.
+    systemd.tmpfiles.rules = [
+      "d /run/step-agent 0755 step-agent step-agent - -"
+    ];
 
-  systemd.services.step-agent-restart.serviceConfig = {
-    Type = "oneshot";
-    ExecStart = "${config.systemd.package}/bin/systemctl restart step-agent.service";
-  };
+    # Binding the PKCS#11 socket here rather than in the agent is what lets a
+    # device whose only network path is EAP-TLS boot at all. NetworkManager needs
+    # the endpoint's private key from this socket to authenticate, and the agent
+    # needs the network to reach mission-control -- so whichever waits for the
+    # other loses. systemd binds this socket before any service runs, so the
+    # supplicant's first request waits in the accept queue until the agent is up
+    # rather than finding nothing at the path.
+    #
+    # Waiting is the important part: p11-kit connects here exactly once per
+    # process and never reconnects. A client that finds no socket does not retry
+    # later, it stays broken until whatever process holds it is restarted.
+    systemd.sockets.step-agent-pkcs11 = {
+      description = "Smallstep Agent PKCS#11 socket";
+      documentation = [ "https://u.step.sm/docs/agent" ];
+      wantedBy = [ "sockets.target" ];
 
-  # Let the agent restart units and manage NetworkManager connections.
-  security.polkit.enable = true;
-  security.polkit.extraConfig = ''
-    polkit.addRule(function(action, subject) {
-      if (subject.user == "step-agent") {
-        if (action.id == "org.freedesktop.systemd1.manage-units") {
-          return polkit.Result.YES;
+      socketConfig = {
+        ListenStream = "/run/step-agent/step-agent-pkcs11.sock";
+        # Must match pkcs11server.FileDescriptorName; it is how the agent
+        # identifies this socket among the descriptors systemd passes it.
+        FileDescriptorName = "pkcs11";
+        SocketUser = "step-agent";
+        SocketGroup = "step-agent";
+        # Every local user's TLS client needs to reach the token, the same
+        # permissions the agent applies when it binds the socket itself.
+        SocketMode = "0666";
+        Service = "step-agent.service";
+      };
+    };
+
+    systemd.services.step-agent = {
+      description = "Smallstep Agent";
+      documentation = [ "https://u.step.sm/docs/agent" ];
+      wantedBy = [ "multi-user.target" ];
+
+      # Deliberately NOT ordered after network-online.target. The agent serves
+      # the PKCS#11 key NetworkManager needs to bring an EAP-TLS link up, so
+      # waiting for the network to be online would mean waiting for itself; it
+      # boots from its cached configuration instead and reaches mission-control
+      # once the link it unblocked exists.
+      after = [ "step-agent-pkcs11.socket" ];
+      # wants, not requires. The ordering above is what matters -- the socket
+      # must be bound before the agent starts, so the agent inherits it rather
+      # than binding its own -- and wants gives that without making the socket
+      # load-bearing: a socket unit that cannot bind would otherwise take the
+      # whole service down with it.
+      wants = [ "step-agent-pkcs11.socket" ];
+
+      # The agent starts once the device is registered and agent.yaml exists.
+      unitConfig.ConditionPathIsReadWrite = "/etc/step-agent/agent.yaml";
+
+      environment = {
+        HOME = "/var/lib/step-agent";
+        RUNTIME_DIRECTORY = "/run/step-agent";
+      };
+
+      serviceConfig = {
+        Type = "notify";
+        WatchdogSec = "60s";
+        # The binary path is spelled out rather than lib.getExe: the NUR
+        # derivations carry pname "step-agent-plugin" with no
+        # meta.mainProgram, so getExe would resolve them to a path that does
+        # not exist. Every build installs bin/step-agent.
+        ExecStart = "${cfg.package}/bin/step-agent start";
+        ExecReload = "${pkgs.coreutils}/bin/kill -HUP $MAINPID";
+        User = "step-agent";
+        Group = "step-agent";
+        ConfigurationDirectory = "step-agent";
+        StateDirectory = "step-agent";
+        Restart = "always";
+        RestartSec = 10;
+
+        ProtectSystem = true;
+        ProtectHome = "read-only";
+        PrivateTmp = true;
+        SecureBits = "keep-caps";
+        AmbientCapabilities = [ "CAP_IPC_LOCK" "CAP_CHOWN" "CAP_DAC_OVERRIDE" "CAP_FOWNER" ];
+        CapabilityBoundingSet = [ "CAP_SYSLOG" "CAP_IPC_LOCK" "CAP_CHOWN" "CAP_DAC_OVERRIDE" "CAP_FOWNER" ];
+        DeviceAllow = [ "/dev/tpmrm0 rw" ];
+        ReadWritePaths = [ "-/dev/tpmrm0" ];
+
+        LimitNOFILE = 65536;
+        LimitMEMLOCK = "infinity";
+      };
+    };
+
+    # Restart the agent when its configuration changes, such as after registering.
+    systemd.paths.step-agent-restart = {
+      wantedBy = [ "multi-user.target" ];
+      pathConfig.PathChanged = "/etc/step-agent/agent.yaml";
+    };
+
+    systemd.services.step-agent-restart.serviceConfig = {
+      Type = "oneshot";
+      ExecStart = "${config.systemd.package}/bin/systemctl restart step-agent.service";
+    };
+
+    # Let the agent restart units and manage NetworkManager connections.
+    security.polkit.enable = true;
+    security.polkit.extraConfig = ''
+      polkit.addRule(function(action, subject) {
+        if (subject.user == "step-agent") {
+          if (action.id == "org.freedesktop.systemd1.manage-units") {
+            return polkit.Result.YES;
+          }
+          if (action.id.indexOf("org.freedesktop.NetworkManager.") == 0) {
+            return polkit.Result.YES;
+          }
         }
-        if (action.id.indexOf("org.freedesktop.NetworkManager.") == 0) {
-          return polkit.Result.YES;
-        }
-      }
-    });
-  '';
+      });
+    '';
 
-  # Publish the agent's PKCS#11 server to p11-kit clients. The module path has
-  # to be explicit: the agent searches FHS locations that do not exist on NixOS.
-  environment.etc."pkcs11/modules/step-agent.module".text = ''
-    module: ${pkgs.p11-kit}/lib/pkcs11/p11-kit-client.so
-    server-address: unix:path=/run/step-agent/step-agent-pkcs11.sock
-  '';
+    # Publish the agent's PKCS#11 server to p11-kit clients. The module path has
+    # to be explicit: the agent searches FHS locations that do not exist on NixOS.
+    environment.etc."pkcs11/modules/step-agent.module".text = ''
+      module: ${pkgs.p11-kit}/lib/pkcs11/p11-kit-client.so
+      server-address: unix:path=/run/step-agent/step-agent-pkcs11.sock
+    '';
+  };
 }
