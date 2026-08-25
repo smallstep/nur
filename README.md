@@ -77,5 +77,23 @@ $ step-agent version
 ```
 
 8. More information about `step-agent` can be found on the following page: [Step Agent docs](https://smallstep.com/docs/platform/smallstep-app/)
+
+## Packaging
+
+Attributes are generated from the contents of `pkgs/`. Every
+`pkgs/<name>/<name>_<version>.nix` is registered automatically as
+`<name>_<version>`, with `.` replaced by `_`:
+
+| File | Attribute |
+|------|-----------|
+| `pkgs/step-agent/step-agent_0.69.0.nix` | `step-agent_0_69_0` |
+| `pkgs/step-agent/step-agent_0.69.1-rc1.nix` | `step-agent_0_69_1-rc1` |
+
+The unsuffixed `step-agent` attribute is the highest **stable** version present
+— prereleases are only reachable by their explicit attribute.
+
+Releasing is therefore just committing the derivation: goreleaser writes the
+file from `smallstep/agent` and there is no package list to keep in sync.
+
 <!-- Remove this if you don't use github actions -->
 ![Build and populate cache](https://github.com/smallstep/nur/workflows/Build%20and%20populate%20cache/badge.svg)
