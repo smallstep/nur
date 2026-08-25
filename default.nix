@@ -8,43 +8,57 @@
 
 { pkgs ? import <nixpkgs> { } }:
 
+let
+  inherit (pkgs) lib;
+
+  # Every derivation under pkgs/<name>/ is registered automatically, so this
+  # attribute set can never drift from what goreleaser has committed. Releases
+  # add a file and nothing else: there is no package list to keep in sync.
+  #
+  #   pkgs/step-agent/step-agent_0.69.0.nix  ->  step-agent_0_69_0
+  #   pkgs/step-agent/step-agent_0.69.0-rc1.nix  ->  step-agent_0_69_0-rc1
+  #
+  # Version and attribute name differ only in the separator, so we keep both.
+  releasesOf = name:
+    let
+      dir = ./pkgs + "/${name}";
+      isRelease = file: type: type == "regular" && lib.hasSuffix ".nix" file;
+      versionOf = file: lib.removePrefix "${name}_" (lib.removeSuffix ".nix" file);
+    in
+    lib.mapAttrsToList
+      (file: _: rec {
+        version = versionOf file;
+        attr = "${name}_${builtins.replaceStrings [ "." ] [ "_" ] version}";
+        package = pkgs.callPackage (dir + "/${file}") { };
+      })
+      (lib.filterAttrs isRelease (builtins.readDir dir));
+
+  # A release is stable when its version carries no -rc/-dev/nightly suffix.
+  isStable = release: builtins.match "[0-9]+\\.[0-9]+\\.[0-9]+" release.version != null;
+
+  newest = releases:
+    lib.head (lib.sort (a: b: builtins.compareVersions a.version b.version > 0) releases);
+
+  # `nur.repos.smallstep.step-agent` is the obvious thing to type, so it has to
+  # mean the current stable release rather than whichever file happens to sort
+  # last -- `sort -V` ranks 0.68.0-rc1 above 0.68.0, and prerelease lines run
+  # ahead of stable ones.
+  packageSet = name:
+    let
+      releases = releasesOf name;
+      byAttr = lib.listToAttrs
+        (map (r: lib.nameValuePair r.attr r.package) releases);
+      stable = lib.filter isStable releases;
+    in
+    byAttr // lib.optionalAttrs (stable != [ ]) {
+      ${name} = (newest stable).package;
+    };
+
+in
 {
   # The `lib`, `modules`, and `overlays` names are special
   lib = import ./lib { inherit pkgs; }; # functions
   modules = import ./modules; # NixOS modules
   overlays = import ./overlays; # nixpkgs overlays
-
-  # <package-list>: DO NOT REMOVE THIS LINE
-  step-agent_0_70_0-rc2 = pkgs.callPackage ./pkgs/step-agent/step-agent_0.70.0-rc2.nix { };
-  step-agent_0_70_0-rc1 = pkgs.callPackage ./pkgs/step-agent/step-agent_0.70.0-rc1.nix { };
-  step-agent_0_68_0-rc1 = pkgs.callPackage ./pkgs/step-agent/step-agent_0.68.0-rc1.nix { };
-  step-agent_0_67_4-rc12 = pkgs.callPackage ./pkgs/step-agent/step-agent_0.67.4-rc12.nix { };
-  step-agent_0_67_4-rc11 = pkgs.callPackage ./pkgs/step-agent/step-agent_0.67.4-rc11.nix { };
-  step-agent_0_67_4-rc10 = pkgs.callPackage ./pkgs/step-agent/step-agent_0.67.4-rc10.nix { };
-  step-agent_0_67_4-rc9 = pkgs.callPackage ./pkgs/step-agent/step-agent_0.67.4-rc9.nix { };
-  step-agent_0_67_4-rc8 = pkgs.callPackage ./pkgs/step-agent/step-agent_0.67.4-rc8.nix { };
-  step-agent_0_67_4-rc7 = pkgs.callPackage ./pkgs/step-agent/step-agent_0.67.4-rc7.nix { };
-  step-agent_0_67_4-rc6 = pkgs.callPackage ./pkgs/step-agent/step-agent_0.67.4-rc6.nix { };
-  step-agent_0_67_4-rc4 = pkgs.callPackage ./pkgs/step-agent/step-agent_0.67.4-rc4.nix { };
-  step-agent_0_67_4-rc3 = pkgs.callPackage ./pkgs/step-agent/step-agent_0.67.4-rc3.nix { };
-  step-agent_0_67_4-rc2 = pkgs.callPackage ./pkgs/step-agent/step-agent_0.67.4-rc2.nix { };
-  step-agent_0_67_4-rc1 = pkgs.callPackage ./pkgs/step-agent/step-agent_0.67.4-rc1.nix { };
-  step-agent_0_67_3-rc3 = pkgs.callPackage ./pkgs/step-agent/step-agent_0.67.3-rc3.nix { };
-  step-agent_0_67_3-rc2 = pkgs.callPackage ./pkgs/step-agent/step-agent_0.67.3-rc2.nix { };
-  step-agent_0_67_3-rc1 = pkgs.callPackage ./pkgs/step-agent/step-agent_0.67.3-rc1.nix { };
-  step-agent_0_67_2 = pkgs.callPackage ./pkgs/step-agent/step-agent_0.67.2.nix { };
-  step-agent_0_67_1 = pkgs.callPackage ./pkgs/step-agent/step-agent_0.67.1.nix { };
-  step-agent_0_67_0 = pkgs.callPackage ./pkgs/step-agent/step-agent_0.67.0.nix { };
-  step-agent_0_66_0 = pkgs.callPackage ./pkgs/step-agent/step-agent_0.66.0.nix { };
-  step-agent_0_65_6 = pkgs.callPackage ./pkgs/step-agent/step-agent_0.65.6.nix { };
-  step-agent_0_65_5-rc2 = pkgs.callPackage ./pkgs/step-agent/step-agent_0.65.5-rc2.nix { };
-  step-agent_0_65_5-rc1 = pkgs.callPackage ./pkgs/step-agent/step-agent_0.65.5-rc1.nix { };
-  step-agent_0_65_4 = pkgs.callPackage ./pkgs/step-agent/step-agent_0.65.4.nix { };
-  step-agent_0_65_2 = pkgs.callPackage ./pkgs/step-agent/step-agent_0.65.2.nix { };
-  step-agent_0_65_1 = pkgs.callPackage ./pkgs/step-agent/step-agent_0.65.1.nix { };
-  step-agent_0_65_0-rc21 = pkgs.callPackage ./pkgs/step-agent/step-agent_0.65.0-rc21.nix { };
-  step-agent_0_65_0-rc20 = pkgs.callPackage ./pkgs/step-agent/step-agent_0.65.0-rc20.nix { };
-  step-agent_0_65_0-rc19 = pkgs.callPackage ./pkgs/step-agent/step-agent_0.65.0-rc19.nix { };
-  step-agent = pkgs.callPackage ./pkgs/step-agent/step-agent_0.65.0-rc11.nix { };
-  step-agent_0_65_0-rc11 = pkgs.callPackage ./pkgs/step-agent/step-agent_0.65.0-rc11.nix { };
 }
+// packageSet "step-agent"
