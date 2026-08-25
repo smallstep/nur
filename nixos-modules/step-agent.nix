@@ -29,15 +29,15 @@ let
 in
 {
   options.services.step-agent = {
-    # pkgs.step-agent only exists on nixpkgs-unstable, and nixpkgs lags our
-    # releases -- so the daemon nixpkgs runs can be versions behind the CLI a
-    # user installed from the smallstep NUR flake. This option is how the two
-    # are kept in lockstep: point it at the NUR package.
+    # nixpkgs packaging trails our releases -- by however far behind the
+    # host's channel is -- so the daemon nixpkgs runs can be versions behind
+    # the CLI a user installed from the smallstep NUR flake. This option is
+    # how the two are kept in lockstep: point it at the NUR package.
     package = lib.mkPackageOption pkgs "step-agent" {
       extraDescription = ''
-        The default, `pkgs.step-agent`, exists only on nixpkgs-unstable and
-        trails Smallstep's releases. Set this to the package from the
-        smallstep NUR flake (e.g. `smallstep.packages
+        The default, `pkgs.step-agent`, comes from the host's nixpkgs
+        channel and trails Smallstep's releases. Set this to the package
+        from the smallstep NUR flake (e.g. `smallstep.packages
         ''${pkgs.system}.step-agent`) to run the current release.
       '';
     };

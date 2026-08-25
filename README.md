@@ -105,8 +105,8 @@ nixosConfigurations.<host> = nixpkgs.lib.nixosSystem {
 ```
 
 Without `services.step-agent.package`, the service falls back to
-`pkgs.step-agent` from nixpkgs, which exists only on nixpkgs-unstable and lags
-behind the releases here — the daemon would run an older version than the
+`pkgs.step-agent` from nixpkgs, which follows your nixpkgs channel and lags
+behind the releases here — the daemon can run an older version than the
 `step-agent` CLI installed above. Setting the option makes them the same
 package.
 
