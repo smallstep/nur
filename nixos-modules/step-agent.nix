@@ -1,4 +1,4 @@
-# NixOS module for the Smallstep agent.
+# NixOS module for the Smallstep agent: services.step-agent.
 #
 # This is the NixOS translation of the units and post-install steps in this
 # directory -- keep it in step with them:
@@ -17,6 +17,10 @@
 # download and import from configuration.nix, so it has to stay a single
 # self-contained file -- it cannot read the sibling unit files at eval time.
 #
+# The option surface (enable, package, settings) deliberately matches the
+# module proposed for nixpkgs in NixOS/nixpkgs#555971. Once that lands, a host
+# drops the import line and keeps its services.step-agent block unchanged.
+#
 # swtpm is deliberately not translated. The deb/rpm packages fall back to a
 # software TPM on hosts with no /dev/tpmrm0 using helper scripts installed to
 # /usr/libexec/step-agent; that path is FHS-specific and the nixpkgs package
@@ -26,39 +30,86 @@
 
 let
   cfg = config.services.step-agent;
+
+  settingsFormat = pkgs.formats.yaml { };
+  settingsFile = settingsFormat.generate "agent.yaml" cfg.settings;
+
+  # Whether agent.yaml is declared here or written by `step-agent register`.
+  declarative = cfg.settings != { };
 in
 {
   options.services.step-agent = {
-    # nixpkgs packaging trails our releases -- by however far behind the
-    # host's channel is -- so the daemon nixpkgs runs can be versions behind
-    # the CLI a user installed from the smallstep NUR flake. This option is
-    # how the two are kept in lockstep: point it at the NUR package.
+    enable = lib.mkEnableOption "the Smallstep agent";
+
+    # nixpkgs packaging trails our releases by however far behind the host's
+    # channel is. This option is how a host runs a newer build than its channel
+    # carries: an overrideAttrs of pkgs.step-agent pointing at an edge tarball
+    # on packages.smallstep.com, as shown in the agent documentation.
     package = lib.mkPackageOption pkgs "step-agent" {
       extraDescription = ''
         The default, `pkgs.step-agent`, comes from the host's nixpkgs
-        channel and trails Smallstep's releases. Set this to the package
-        from the smallstep NUR flake (e.g. `smallstep.packages
-        ''${pkgs.system}.step-agent`) to run the current release.
+        channel. To run a newer or edge release, override its `version` and
+        `src` with the tarball URL and the `sha256_sri` hash from the
+        version's manifest under
+        <https://packages.smallstep.com/edge/step-agent/linux/> -- see
+        <https://smallstep.com/docs/platform/smallstep-agent/#nixos>.
+      '';
+    };
+
+    settings = lib.mkOption {
+      type = lib.types.submodule {
+        freeformType = settingsFormat.type;
+      };
+      default = { };
+      example = {
+        team = "acme";
+        fingerprint = "4052...0826";
+      };
+      description = ''
+        Contents of {file}`/etc/step-agent/agent.yaml`, which holds the
+        defaults for `step-agent start` flags (see `step-agent start --help`).
+
+        `team` is the team slug (the value after `/app/` in the Smallstep
+        console URL) and `fingerprint` is the SHA-256 root fingerprint of the
+        team's Smallstep Agents authority. With those two set, a device that
+        has been added to the team's inventory enrolls itself on first start
+        with no interactive `step-agent register`; every host in a fleet gets
+        the same two values, nothing in the file is per-device.
+
+        Leave this empty to register interactively with
+        `sudo step-agent register <team>` instead, which writes the file.
       '';
     };
   };
 
-  config = {
+  config = lib.mkIf cfg.enable {
     # The nixpkgs step-agent package is unfree. allowUnfreePackages, unlike
     # allowUnfreePredicate, is merged as list concatenation across modules, so
     # this cannot clobber (or be clobbered by) the host's own unfree
-    # configuration. Both names are listed because nixpkgs builds the agent
-    # with pname "step-agent" while the NUR derivations use
-    # "step-agent-plugin".
+    # configuration.
     #
     # Skipped when the host passes an externally instantiated nixpkgs
     # (nixpkgs.pkgs): any nixpkgs.config definition is an eval error there,
     # and such hosts configure unfree on the instance they create.
     nixpkgs.config = lib.mkIf (!options.nixpkgs.pkgs.isDefined) {
-      allowUnfreePackages = [ "step-agent" "step-agent-plugin" ];
+      allowUnfreePackages = [ "step-agent" ];
     };
 
     environment.systemPackages = [ cfg.package ];
+
+    # The declared config is served from the store at the same path the
+    # imperative flow writes, so the daemon and the CLI (`doctor`, `reset`)
+    # resolve the one file.
+    #
+    # The agent uses the standard systemd directories, which the unit below
+    # sets: config is read from /etc/step-agent (ConfigurationDirectory=),
+    # state is written under /var/lib/step-agent (StateDirectory=), and the
+    # sockets live in /run/step-agent (RUNTIME_DIRECTORY). The daemon never
+    # writes to the config directory. Only `step-agent register` does, which
+    # is why a host with declared settings runs it with --skip-config.
+    environment.etc."step-agent/agent.yaml" = lib.mkIf declarative {
+      source = settingsFile;
+    };
 
     # The agent talks to the TPM from user space, so it needs read/write access
     # to the TPM resource manager. This creates the tss group and the udev rules
@@ -128,8 +179,18 @@ in
       # whole service down with it.
       wants = [ "step-agent-pkcs11.socket" ];
 
-      # The agent starts once the device is registered and agent.yaml exists.
-      unitConfig.ConditionPathIsReadWrite = "/etc/step-agent/agent.yaml";
+      # The agent starts once agent.yaml exists: declared above, or written by
+      # `step-agent register`. Without it, `start` exits immediately and
+      # Restart=always would loop every 10s.
+      #
+      # ConditionPathExists=, not ConditionPathIsReadWrite= as in the deb/rpm
+      # unit: the latter tests the mount, not the file, and a config served
+      # from the (read-only) Nix store would make systemd skip the unit.
+      unitConfig.ConditionPathExists = "/etc/step-agent/agent.yaml";
+
+      # A change to the declared settings is a new store path, not a new unit,
+      # so tell nixos-rebuild switch to restart the agent on it.
+      restartTriggers = lib.optional declarative settingsFile;
 
       environment = {
         HOME = "/var/lib/step-agent";
@@ -139,10 +200,9 @@ in
       serviceConfig = {
         Type = "notify";
         WatchdogSec = "60s";
-        # The binary path is spelled out rather than lib.getExe: the NUR
-        # derivations carry pname "step-agent-plugin" with no
-        # meta.mainProgram, so getExe would resolve them to a path that does
-        # not exist. Every build installs bin/step-agent.
+        # The binary path is spelled out rather than lib.getExe so that an
+        # overridden package without meta.mainProgram still resolves. Every
+        # build installs bin/step-agent.
         ExecStart = "${cfg.package}/bin/step-agent start";
         ExecReload = "${pkgs.coreutils}/bin/kill -HUP $MAINPID";
         User = "step-agent";
