@@ -1,0 +1,63 @@
+name: "Update flake.lock"
+
+# Keeps the flake's own nixpkgs pin fresh. Customers who follow the README
+# override the lock with inputs.nixpkgs.follows, but anyone running
+# `nix build github:smallstep/nur#<attr>` directly evaluates against this
+# lock — and build.yml only tests the live channels via NIX_PATH, so a
+# rotten lock is invisible to CI (smallstep/nur#19). The push happens only
+# after the new lock is proven to evaluate and build.
+on:
+  schedule:
+    - cron: "0 7 * * 1"
+  workflow_dispatch:
+
+permissions: read-all
+
+jobs:
+  update-flake-lock:
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      with:
+        token: ${{ secrets.NUR_PAT }}
+
+    - name: Install nix
+      uses: cachix/install-nix-action@96951a368ba55167b55f1c916f7d416bac6505fe # v31.10.3
+      with:
+        extra_nix_config: |
+          experimental-features = nix-command flakes
+          access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
+
+    - name: Update flake.lock
+      run: nix flake update
+
+    - name: Verify the flake evaluates and builds with the new lock
+      run: |
+        # `nix flake show` forces evaluation of every package attribute —
+        # the exact thing a stale lock breaks.
+        nix flake show
+        nix build .#step-agent
+
+    - name: Setup bot SSH signing key
+      uses: webfactory/ssh-agent@e83874834305fe9a4a2997156cb26c5de65a8555 # v0.10.0
+      with:
+        ssh-private-key: |
+          ${{ secrets.STEP_TRAVIS_CI_GH_PRIVATE_SIGNING_KEY }}
+
+    - name: Commit and push
+      run: |
+        if git diff --quiet flake.lock; then
+          echo "flake.lock is already current; nothing to push"
+          exit 0
+        fi
+        git config user.email "eng+ci@smallstep.com"
+        git config user.name "step-ci"
+        git config commit.gpgsign true
+        git config gpg.format ssh
+        git config user.signingkey "${{ secrets.STEP_TRAVIS_CI_GH_PUBLIC_SIGNING_KEY }}"
+        git add flake.lock
+        git commit -m "Update flake.lock"
+        git push
